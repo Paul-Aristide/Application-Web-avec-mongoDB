@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Enseignants, Étudiants, Cours</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <h1 class="logo">Gestion Enseignants · Étudiants · Cours</h1>
+      <nav class="nav">
+        <button type="button" class="nav-btn" :class="{ active: view === 'dashboard' }" @click="view = 'dashboard'">Dashboard</button>
+        <button type="button" class="nav-btn" :class="{ active: view === 'enseignants' }" @click="view = 'enseignants'">Enseignants</button>
+        <button type="button" class="nav-btn" :class="{ active: view === 'etudiants' }" @click="view = 'etudiants'">Étudiants</button>
+        <button type="button" class="nav-btn" :class="{ active: view === 'cours' }" @click="view = 'cours'">Cours</button>
+        <button type="button" class="nav-btn" :class="{ active: view === 'inscriptions' }" @click="view = 'inscriptions'">S'inscrire (S_INSCRIRE)</button>
+      </nav>
+      <div class="live-badge" v-if="view === 'dashboard' && live">
+        <span class="pulse"></span>
+        Temps réel
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Dashboard -->
+      <section v-show="view === 'dashboard'" class="dashboard">
+        <h2 class="section-title">Tableau de bord — Associations entre tables</h2>
+        <p class="data-source" v-if="stats.source">Données lues depuis : <strong>{{ stats.source }}</strong></p>
+        <div class="cards">
+          <div class="card">
+            <span class="card-label">Enseignants</span>
+            <span class="card-value">{{ (stats.summary && stats.summary.enseignants) ?? 0 }}</span>
+          </div>
+          <div class="card">
+            <span class="card-label">Étudiants</span>
+            <span class="card-value">{{ (stats.summary && stats.summary.etudiants) ?? 0 }}</span>
+          </div>
+          <div class="card">
+            <span class="card-label">Cours</span>
+            <span class="card-value">{{ (stats.summary && stats.summary.cours) ?? 0 }}</span>
+          </div>
+          <div class="card highlight">
+            <span class="card-label">Inscriptions (S_INSCRIRE)</span>
+            <span class="card-value">{{ (stats.summary && stats.summary.inscriptions) ?? 0 }}</span>
+          </div>
+        </div>
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h3>Association ENSEIGNANTS → COURS : nombre de cours par enseignant</h3>
+            <canvas ref="chartCoursByEnseignant"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Cours par département</h3>
+            <canvas ref="chartCoursByDepartement"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Étudiants par filière</h3>
+            <canvas ref="chartEtudiantsByFiliere"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Cours par niveau (L1, L2, M1…)</h3>
+            <canvas ref="chartCoursByNiveau"></canvas>
+          </div>
+        </div>
+        <div class="chart-card full-width">
+          <h3>Enseignants par département</h3>
+          <canvas ref="chartEnseignantsByDepartement"></canvas>
+        </div>
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h3>COURS → S_INSCRIRE : inscriptions par cours</h3>
+            <canvas ref="chartInscriptionsByCours"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>ETUDIANTS → S_INSCRIRE : inscriptions par étudiant</h3>
+            <canvas ref="chartInscriptionsByEtudiant"></canvas>
+          </div>
+        </div>
+        <div class="recent-orders" v-if="stats.recent_cours && stats.recent_cours.length > 0">
+          <h3>Derniers cours</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Intitulé</th>
+                <th>Enseignant</th>
+                <th>Crédits</th>
+                <th>Niveau</th>
+                <th>Département</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in stats.recent_cours" :key="c._id">
+                <td>{{ c.INTITULE }}</td>
+                <td>{{ enseignantNom(c.ID_ENS) }}</td>
+                <td>{{ c.NBRE_CREDITS }}</td>
+                <td>{{ c.NIVEAU }}</td>
+                <td>{{ c.DEPARTEMENT }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="recent-orders" v-if="stats.recent_inscriptions && stats.recent_inscriptions.length > 0">
+          <h3>Dernières inscriptions (S_INSCRIRE)</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Étudiant</th>
+                <th>Cours</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="i in stats.recent_inscriptions" :key="i._id">
+                <td>{{ etudiantNom(i.ID_ETUDIANTS, i.NUM_CARTE) }}</td>
+                <td>{{ coursIntitule(i.ID_COURS, i.CODE_COURS) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Enseignants -->
+      <section v-show="view === 'enseignants'" class="crud-section">
+        <h2 class="section-title">Enseignants</h2>
+        <form class="form form-grid" @submit.prevent="saveEnseignant">
+          <input v-model="enseignantForm.NUM_ENS" placeholder="NUM_ENS (10 car.)" maxlength="10">
+          <input v-model="enseignantForm.NOM" placeholder="NOM" required>
+          <input v-model="enseignantForm.PRENOM" placeholder="PRENOM" required>
+          <input v-model="enseignantForm.EMAIL" type="email" placeholder="EMAIL" required>
+          <input v-model="enseignantForm.DEPARTEMENT" placeholder="Département">
+          <input v-model="enseignantForm.GRADE" placeholder="Grade (MCF, PR…)" maxlength="5">
+          <input v-model="enseignantForm.SPECIALITE" placeholder="Spécialité" required>
+          <div class="form-actions">
+            <button type="submit">{{ editingEnseignantId ? 'Modifier' : 'Ajouter' }}</button>
+            <button type="button" v-if="editingEnseignantId" @click="cancelEditEnseignant">Annuler</button>
+          </div>
+        </form>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID_ENS</th><th>NUM_ENS</th><th>NOM</th><th>PRENOM</th><th>EMAIL</th><th>Département</th><th>Grade</th><th>Spécialité</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="e in enseignants" :key="e._id">
+              <td>{{ e.ID_ENS }}</td>
+              <td>{{ e.NUM_ENS }}</td>
+              <td>{{ e.NOM }}</td>
+              <td>{{ e.PRENOM }}</td>
+              <td>{{ e.EMAIL }}</td>
+              <td>{{ e.DEPARTEMENT || '—' }}</td>
+              <td>{{ e.GRADE || '—' }}</td>
+              <td>{{ e.SPECIALITE }}</td>
+              <td>
+                <button class="btn-sm" @click="editEnseignant(e)">Modifier</button>
+                <button class="btn-sm danger" @click="deleteEnseignant(e._id)">Supprimer</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Étudiants -->
+      <section v-show="view === 'etudiants'" class="crud-section">
+        <h2 class="section-title">Étudiants</h2>
+        <form class="form form-grid" @submit.prevent="saveEtudiant">
+          <input v-model="etudiantForm.NUM_CARTE" placeholder="NUM_CARTE" required>
+          <input v-model="etudiantForm.NOM" placeholder="NOM">
+          <input v-model="etudiantForm.PRENOM" placeholder="PRENOM">
+          <input v-model="etudiantForm.EMAIL" type="email" placeholder="EMAIL">
+          <input v-model="etudiantForm.TELEPHONE" placeholder="Téléphone">
+          <input v-model="etudiantForm.FILIERE" placeholder="Filière">
+          <input v-model.number="etudiantForm.ANNEE_ENTREE" type="number" placeholder="Année entrée">
+          <input v-model="etudiantForm.DATE_NAISSANCE" type="date" placeholder="Date naissance">
+          <div class="form-actions">
+            <button type="submit">{{ editingEtudiantId ? 'Modifier' : 'Ajouter' }}</button>
+            <button type="button" v-if="editingEtudiantId" @click="cancelEditEtudiant">Annuler</button>
+          </div>
+        </form>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th><th>NUM_CARTE</th><th>NOM</th><th>PRENOM</th><th>EMAIL</th><th>Tél.</th><th>Filière</th><th>Année</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="e in etudiants" :key="e._id">
+              <td>{{ e.ID_ETUDIANTS }}</td>
+              <td>{{ e.NUM_CARTE }}</td>
+              <td>{{ e.NOM || '—' }}</td>
+              <td>{{ e.PRENOM || '—' }}</td>
+              <td>{{ e.EMAIL || '—' }}</td>
+              <td>{{ e.TELEPHONE || '—' }}</td>
+              <td>{{ e.FILIERE || '—' }}</td>
+              <td>{{ e.ANNEE_ENTREE || '—' }}</td>
+              <td>
+                <button class="btn-sm" @click="editEtudiant(e)">Modifier</button>
+                <button class="btn-sm danger" @click="deleteEtudiant(e._id)">Supprimer</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Cours -->
+      <section v-show="view === 'cours'" class="crud-section">
+        <h2 class="section-title">Cours</h2>
+        <form class="form form-grid form-cours" @submit.prevent="saveCours">
+          <select v-model="coursForm.ID_ENS" required>
+            <option value="">-- Enseignant (ID_ENS) --</option>
+            <option v-for="e in enseignants" :key="e._id" :value="e.ID_ENS">{{ e.NOM }} {{ e.PRENOM }} (ID {{ e.ID_ENS }})</option>
+          </select>
+          <input v-model="coursForm.INTITULE" placeholder="Intitulé" required>
+          <input v-model="coursForm.DESCRIPTION_" placeholder="Description">
+          <input v-model.number="coursForm.NBRE_CREDITS" type="number" step="0.5" placeholder="Crédits ECTS" required>
+          <input v-model.number="coursForm.SEMESTRE" type="number" min="1" max="2" placeholder="Semestre (1 ou 2)" required>
+          <input v-model="coursForm.NIVEAU" placeholder="Niveau (L1, L2…)" required>
+          <input v-model="coursForm.DEPARTEMENT" placeholder="Département" required>
+          <input v-model="coursForm.PREREQUIS" placeholder="Prérequis">
+          <div class="form-actions">
+            <button type="submit">{{ editingCoursId ? 'Modifier' : 'Ajouter' }}</button>
+            <button type="button" v-if="editingCoursId" @click="cancelEditCours">Annuler</button>
+          </div>
+        </form>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID_COURS</th><th>CODE</th><th>Intitulé</th><th>Enseignant</th><th>Crédits</th><th>Sem.</th><th>Niveau</th><th>Département</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in cours" :key="c._id">
+              <td>{{ c.ID_COURS }}</td>
+              <td>{{ c.CODE_COURS }}</td>
+              <td>{{ c.INTITULE }}</td>
+              <td>{{ enseignantNom(c.ID_ENS) }}</td>
+              <td>{{ c.NBRE_CREDITS }}</td>
+              <td>{{ c.SEMESTRE }}</td>
+              <td>{{ c.NIVEAU }}</td>
+              <td>{{ c.DEPARTEMENT }}</td>
+              <td>
+                <button class="btn-sm" @click="editCours(c)">Modifier</button>
+                <button class="btn-sm danger" @click="deleteCours(c._id)">Supprimer</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- S_INSCRIRE : Inscriptions -->
+      <section v-show="view === 'inscriptions'" class="crud-section">
+        <h2 class="section-title">S'inscrire (S_INSCRIRE) — Association Étudiants ↔ Cours</h2>
+        <form class="form form-inscriptions" @submit.prevent="saveInscription">
+          <select v-model="inscriptionForm.etudiantKey" required>
+            <option value="">-- Étudiant (NUM_CARTE) --</option>
+            <option v-for="e in etudiants" :key="e._id" :value="etudiantKey(e)">{{ e.NOM }} {{ e.PRENOM }} — {{ e.NUM_CARTE }}</option>
+          </select>
+          <select v-model="inscriptionForm.coursKey" required>
+            <option value="">-- Cours --</option>
+            <option v-for="c in cours" :key="c._id" :value="coursKey(c)">{{ c.INTITULE }} ({{ c.ID_COURS }}/{{ c.CODE_COURS }})</option>
+          </select>
+          <button type="submit">Inscrire</button>
+        </form>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Étudiant</th>
+              <th>NUM_CARTE</th>
+              <th>Cours</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="i in inscriptions" :key="i._id">
+              <td>{{ etudiantNom(i.ID_ETUDIANTS, i.NUM_CARTE) }}</td>
+              <td>{{ i.NUM_CARTE }}</td>
+              <td>{{ coursIntitule(i.ID_COURS, i.CODE_COURS) }}</td>
+              <td>
+                <button class="btn-sm danger" @click="deleteInscription(i._id)">Supprimer</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
