@@ -45,7 +45,7 @@
             <span class="card-value">{{ (stats.summary && stats.summary.cours) ?? 0 }}</span>
           </div>
           <div class="card highlight">
-            <span class="card-label">Inscriptions (S_INSCRIRE)</span>
+            <span class="card-label">Inscriptions</span>
             <span class="card-value">{{ (stats.summary && stats.summary.inscriptions) ?? 0 }}</span>
           </div>
         </div>
@@ -105,7 +105,7 @@
           </table>
         </div>
         <div class="recent-orders" v-if="stats.recent_inscriptions && stats.recent_inscriptions.length > 0">
-          <h3>Dernières inscriptions (S_INSCRIRE)</h3>
+          <h3>Dernières inscriptions</h3>
           <table class="table">
             <thead>
               <tr>
